@@ -1,40 +1,29 @@
-export default function Home() {
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/auth-context';
+
+export default function HomePage() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        router.push('/dashboard');
+      } else {
+        router.push('/login');
+      }
+    }
+  }, [user, loading, router]);
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-24">
-      <div className="z-10 w-full max-w-5xl items-center justify-between font-mono text-sm">
-        <h1 className="text-4xl font-bold text-center mb-8">
-          Intelligent Alert Hub
-        </h1>
-        <p className="text-center text-muted-foreground mb-8">
-          Your intelligent information collection and notification system
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-16">
-          <div className="p-6 border rounded-lg">
-            <h2 className="text-xl font-semibold mb-2">Multiple Sources</h2>
-            <p className="text-muted-foreground">
-              Collect information from RSS, Twitter, Web, and more
-            </p>
-          </div>
-          <div className="p-6 border rounded-lg">
-            <h2 className="text-xl font-semibold mb-2">Smart Filtering</h2>
-            <p className="text-muted-foreground">
-              Advanced filters with keyword matching and priorities
-            </p>
-          </div>
-          <div className="p-6 border rounded-lg">
-            <h2 className="text-xl font-semibold mb-2">Multi-Channel Notifications</h2>
-            <p className="text-muted-foreground">
-              Email, Push, Webhook, and Desktop notifications
-            </p>
-          </div>
-          <div className="p-6 border rounded-lg">
-            <h2 className="text-xl font-semibold mb-2">Customizable Dashboard</h2>
-            <p className="text-muted-foreground">
-              Manage all your settings in one place
-            </p>
-          </div>
-        </div>
+    <div className="flex h-screen items-center justify-center">
+      <div className="text-center">
+        <div className="h-32 w-32 animate-spin rounded-full border-b-2 border-primary mx-auto"></div>
+        <p className="mt-4 text-muted-foreground">読み込み中...</p>
       </div>
-    </main>
+    </div>
   );
 }
