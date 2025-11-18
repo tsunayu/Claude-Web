@@ -10,6 +10,9 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================
+// User Model - ユーザー情報
+// ============================================
 model User {
   id                String   @id @default(uuid())
   email             String   @unique
@@ -21,101 +24,173 @@ model User {
   language          String   @default("en")
   emailVerified     Boolean  @default(false) @map("email_verified")
   isActive          Boolean  @default(true) @map("is_active")
-  subscriptionTier  String   @default("free") @map("subscription_tier")
+  subscriptionTier  String   @default("free") @map("subscription_tier") // free, pro, enterprise
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
   lastLoginAt       DateTime? @map("last_login_at")
 
-  sources              Source[]
-  filters              Filter[]
-  notificationsConfig  NotificationConfig[]
-  notificationsLog     NotificationLog[]
+  // Relations
+  dataSources          DataSource[]
+  notificationRules    NotificationRule[]
+  notificationHistory  NotificationHistory[]
   apiKeys              ApiKey[]
 
   @@map("users")
+  @@index([email])
+  @@index([username])
 }
 
-model Source {
-  id             String   @id @default(uuid())
-  userId         String   @map("user_id")
+// ============================================
+// DataSource Model - 情報ソース設定
+// ============================================
+model DataSource {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
   name           String
-  type           String   // rss, twitter, web, news_api, webhook
-  config         Json     // Source-specific configuration
-  isActive       Boolean  @default(true) @map("is_active")
-  checkInterval  Int      @default(300) @map("check_interval") // in seconds
+  type           String    // rss, twitter, web, news_api, webhook
+  config         Json      // Source-specific configuration
+  isActive       Boolean   @default(true) @map("is_active")
+  checkInterval  Int       @default(300) @map("check_interval") // in seconds
   lastCheckedAt  DateTime? @map("last_checked_at")
-  errorCount     Int      @default(0) @map("error_count")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  lastSuccessAt  DateTime? @map("last_success_at")
+  errorCount     Int       @default(0) @map("error_count")
+  lastError      String?   @map("last_error")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Relations
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collectedData CollectedData[]
 
+  @@map("data_sources")
   @@index([userId])
   @@index([type])
   @@index([isActive])
-  @@map("sources")
+  @@index([lastCheckedAt])
 }
 
-model Filter {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  name        String
-  description String?
-  conditions  Json     // Filter conditions with AND/OR logic
-  priority    Int      @default(0)
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+// ============================================
+// NotificationRule Model - 通知ルール
+// ============================================
+model NotificationRule {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  name            String
+  description     String?
+  // Filter conditions
+  keywords        String[] // Keywords to match
+  excludeKeywords String[] @map("exclude_keywords") // Keywords to exclude
+  sourceTypes     String[] @map("source_types") // Source types to monitor
+  priority        Int      @default(0) // Higher = more important
+  // Notification settings
+  channels        Json     // Email, Push, Webhook, Desktop
+  schedule        Json?    // When to send notifications
+  quietHours      Json?    @map("quiet_hours") // Silent hours
+  batchEnabled    Boolean  @default(false) @map("batch_enabled")
+  batchInterval   Int?     @map("batch_interval") // in minutes
+  maxPerBatch     Int?     @map("max_per_batch")
+  // Status
+  isActive        Boolean  @default(true) @map("is_active")
+  lastTriggeredAt DateTime? @map("last_triggered_at")
+  triggerCount    Int      @default(0) @map("trigger_count")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
-  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  notificationsConfig NotificationConfig[]
+  // Relations
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationHistory NotificationHistory[]
 
+  @@map("notification_rules")
   @@index([userId])
-  @@map("filters")
+  @@index([isActive])
+  @@index([priority])
 }
 
-model NotificationConfig {
-  id          String   @id @default(uuid())
-  userId      String   @map("user_id")
-  filterId    String   @map("filter_id")
-  channels    Json     // Notification channels configuration
-  schedule    Json?    // Notification schedule
-  quietHours  Json?    @map("quiet_hours") // Silent hours
-  batchConfig Json?    @map("batch_config") // Batch notification config
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+// ============================================
+// CollectedData Model - 収集データ
+// ============================================
+model CollectedData {
+  id            String    @id @default(uuid())
+  dataSourceId  String    @map("data_source_id")
+  // Content information
+  title         String
+  content       String    @db.Text
+  summary       String?   @db.Text
+  url           String    @unique
+  author        String?
+  publishedAt   DateTime? @map("published_at")
+  // Metadata
+  language      String?
+  tags          String[]
+  categories    String[]
+  // Analysis (will be populated by workers)
+  sentiment     Float?    // -1 to 1
+  keywords      String[]
+  entities      String[]
+  // Media
+  imageUrl      String?   @map("image_url")
+  videoUrl      String?   @map("video_url")
+  // Processing status
+  isProcessed   Boolean   @default(false) @map("is_processed")
+  notified      Boolean   @default(false)
+  notifiedAt    DateTime? @map("notified_at")
+  // Timestamps
+  collectedAt   DateTime  @default(now()) @map("collected_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
+  // Relations
+  dataSource          DataSource            @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+  notificationHistory NotificationHistory[]
+
+  @@map("collected_data")
+  @@index([dataSourceId])
+  @@index([collectedAt])
+  @@index([isProcessed])
+  @@index([notified])
+  @@index([publishedAt])
+}
+
+// ============================================
+// NotificationHistory Model - 通知履歴
+// ============================================
+model NotificationHistory {
+  id                 String    @id @default(uuid())
+  userId             String    @map("user_id")
+  notificationRuleId String?   @map("notification_rule_id")
+  collectedDataId    String    @map("collected_data_id")
+  // Notification details
+  channel            String    // email, push, webhook, desktop
+  status             String    // pending, sent, failed, read
+  recipient          String?   // Email address, device ID, etc.
+  subject            String?
+  message            String?   @db.Text
+  metadata           Json?
+  // Delivery information
+  sentAt             DateTime? @map("sent_at")
+  readAt             DateTime? @map("read_at")
+  failedAt           DateTime? @map("failed_at")
+  errorMessage       String?   @map("error_message")
+  retryCount         Int       @default(0) @map("retry_count")
+  // Timestamps
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  // Relations
   user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  filter           Filter            @relation(fields: [filterId], references: [id], onDelete: Cascade)
-  notificationsLog NotificationLog[]
+  notificationRule NotificationRule? @relation(fields: [notificationRuleId], references: [id], onDelete: SetNull)
+  collectedData    CollectedData     @relation(fields: [collectedDataId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
-  @@index([filterId])
-  @@map("notifications_config")
-}
-
-model NotificationLog {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  configId  String?   @map("config_id")
-  contentId String    @map("content_id") // MongoDB content ID
-  channel   String    // email, push, webhook, desktop
-  status    String    // pending, sent, failed, read
-  metadata  Json?
-  sentAt    DateTime? @map("sent_at")
-  readAt    DateTime? @map("read_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-
-  user   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  config NotificationConfig? @relation(fields: [configId], references: [id], onDelete: SetNull)
-
+  @@map("notification_history")
   @@index([userId])
   @@index([status])
+  @@index([channel])
   @@index([createdAt])
-  @@map("notifications_log")
+  @@index([sentAt])
 }
 
+// ============================================
+// ApiKey Model - API キー管理
+// ============================================
 model ApiKey {
   id          String    @id @default(uuid())
   userId      String    @map("user_id")
@@ -127,9 +202,10 @@ model ApiKey {
   isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
 
+  // Relations
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@map("api_keys")
   @@index([userId])
   @@index([keyHash])
-  @@map("api_keys")
 }
