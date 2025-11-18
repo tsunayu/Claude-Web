@@ -3,6 +3,8 @@ import IORedis from 'ioredis';
 import { config } from '../config';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../middlewares/errorHandler';
+import { CollectorFactory } from '../collectors/factory';
+import { CollectedContent } from '../collectors/base';
 
 // Redis connection
 const connection = new IORedis({
@@ -135,6 +137,59 @@ export class JobService {
   }
 }
 
+/**
+ * Saves collected data items to the database
+ * Skips duplicates based on URL
+ */
+async function saveCollectedData(items: CollectedContent[], dataSourceId: string): Promise<number> {
+  let savedCount = 0;
+
+  for (const item of items) {
+    try {
+      // Check if item already exists by URL
+      const existing = await prisma.collectedData.findUnique({
+        where: { url: item.url },
+      });
+
+      if (existing) {
+        console.log(`[Worker] Skipping duplicate item: ${item.url}`);
+        continue;
+      }
+
+      // Create new collected data entry
+      await prisma.collectedData.create({
+        data: {
+          dataSourceId,
+          title: item.title,
+          content: item.content,
+          summary: item.summary || item.content.substring(0, 200),
+          url: item.url,
+          author: item.author,
+          publishedAt: item.publishedAt,
+          imageUrl: item.imageUrl,
+          tags: item.tags || [],
+          categories: item.categories || [],
+          language: item.language,
+          metadata: {
+            collectedAt: new Date().toISOString(),
+            source: item.author,
+          },
+          isProcessed: false,
+          sentiment: null,
+          keywords: [],
+        },
+      });
+
+      savedCount++;
+    } catch (error) {
+      console.error(`[Worker] Error saving item ${item.url}:`, error);
+      // Continue with other items even if one fails
+    }
+  }
+
+  return savedCount;
+}
+
 // Worker to process jobs (this would typically be in a separate process)
 export function startCollectWorker() {
   const worker = new Worker(
@@ -142,7 +197,7 @@ export function startCollectWorker() {
     async (job: Job<CollectJobData>) => {
       const { sourceId, userId } = job.data;
 
-      console.log(`Processing collect job for source ${sourceId}`);
+      console.log(`[Worker] Processing collect job for source ${sourceId}`);
 
       // Get data source
       const dataSource = await prisma.dataSource.findFirst({
@@ -153,12 +208,43 @@ export function startCollectWorker() {
         throw new Error('Data source not found');
       }
 
-      // TODO: Implement actual data collection based on source type
-      // This is a placeholder that will be implemented in the next phase
-      await job.updateProgress(50);
+      await job.updateProgress(10);
 
-      // Simulate data collection
-      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Validate data source configuration
+      try {
+        CollectorFactory.validate(dataSource);
+      } catch (error) {
+        console.error(`[Worker] Invalid data source configuration:`, error);
+        throw error;
+      }
+
+      await job.updateProgress(20);
+
+      // Create collector
+      const collector = CollectorFactory.create(dataSource);
+
+      console.log(`[Worker] Created ${dataSource.type} collector for: ${dataSource.name}`);
+
+      await job.updateProgress(30);
+
+      // Collect data
+      const result = await collector.collect();
+
+      await job.updateProgress(60);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Data collection failed');
+      }
+
+      console.log(`[Worker] Collected ${result.itemsCollected} items from ${dataSource.name}`);
+
+      // Save collected items to database
+      let savedCount = 0;
+      if (result.items && result.items.length > 0) {
+        savedCount = await saveCollectedData(result.items, dataSource.id);
+      }
+
+      await job.updateProgress(90);
 
       // Update data source
       await prisma.dataSource.update({
@@ -172,10 +258,13 @@ export function startCollectWorker() {
 
       await job.updateProgress(100);
 
+      console.log(`[Worker] Job completed. Saved ${savedCount}/${result.itemsCollected} new items`);
+
       return {
         success: true,
-        itemsCollected: 0, // Placeholder
-        message: 'Data collection job completed',
+        itemsCollected: result.itemsCollected,
+        savedItems: savedCount,
+        message: 'Data collection job completed successfully',
       };
     },
     {

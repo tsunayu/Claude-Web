@@ -10,6 +10,7 @@ import { sourceRoutes } from './routes/sources';
 import { ruleRoutes } from './routes/rules';
 import { jobRoutes } from './routes/jobs';
 import { startCollectWorker } from './services/job.service';
+import { schedulerService } from './services/scheduler.service';
 
 const fastify = Fastify({
   logger: {
@@ -129,10 +130,13 @@ async function start() {
     fastify.log.info(`Server listening on ${config.host}:${config.port}`);
     fastify.log.info(`Environment: ${config.nodeEnv}`);
 
-    // Start background job worker
+    // Start background services
     if (config.nodeEnv !== 'test') {
       startCollectWorker();
       fastify.log.info('Background job worker started');
+
+      await schedulerService.start();
+      fastify.log.info('Scheduler service started');
     }
   } catch (err) {
     fastify.log.error(err);
@@ -145,6 +149,10 @@ const signals = ['SIGINT', 'SIGTERM'];
 signals.forEach((signal) => {
   process.on(signal, async () => {
     fastify.log.info(`Received ${signal}, closing server...`);
+
+    // Stop scheduler
+    schedulerService.stop();
+
     await fastify.close();
     process.exit(0);
   });
