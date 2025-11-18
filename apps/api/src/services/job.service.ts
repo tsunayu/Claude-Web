@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../middlewares/errorHandler';
 import { CollectorFactory } from '../collectors/factory';
 import { CollectedContent } from '../collectors/base';
+import { notificationService } from './notification.service';
 
 // Redis connection
 const connection = new IORedis({
@@ -140,9 +141,10 @@ export class JobService {
 /**
  * Saves collected data items to the database
  * Skips duplicates based on URL
+ * Returns array of saved data IDs
  */
-async function saveCollectedData(items: CollectedContent[], dataSourceId: string): Promise<number> {
-  let savedCount = 0;
+async function saveCollectedData(items: CollectedContent[], dataSourceId: string): Promise<string[]> {
+  const savedIds: string[] = [];
 
   for (const item of items) {
     try {
@@ -157,7 +159,7 @@ async function saveCollectedData(items: CollectedContent[], dataSourceId: string
       }
 
       // Create new collected data entry
-      await prisma.collectedData.create({
+      const saved = await prisma.collectedData.create({
         data: {
           dataSourceId,
           title: item.title,
@@ -180,14 +182,19 @@ async function saveCollectedData(items: CollectedContent[], dataSourceId: string
         },
       });
 
-      savedCount++;
+      savedIds.push(saved.id);
+
+      // Trigger notification matching asynchronously
+      notificationService.matchAndNotify(saved.id).catch((error) => {
+        console.error(`[Worker] Notification matching error for ${saved.id}:`, error);
+      });
     } catch (error) {
       console.error(`[Worker] Error saving item ${item.url}:`, error);
       // Continue with other items even if one fails
     }
   }
 
-  return savedCount;
+  return savedIds;
 }
 
 // Worker to process jobs (this would typically be in a separate process)
@@ -239,9 +246,9 @@ export function startCollectWorker() {
       console.log(`[Worker] Collected ${result.itemsCollected} items from ${dataSource.name}`);
 
       // Save collected items to database
-      let savedCount = 0;
+      let savedIds: string[] = [];
       if (result.items && result.items.length > 0) {
-        savedCount = await saveCollectedData(result.items, dataSource.id);
+        savedIds = await saveCollectedData(result.items, dataSource.id);
       }
 
       await job.updateProgress(90);
@@ -258,12 +265,13 @@ export function startCollectWorker() {
 
       await job.updateProgress(100);
 
-      console.log(`[Worker] Job completed. Saved ${savedCount}/${result.itemsCollected} new items`);
+      console.log(`[Worker] Job completed. Saved ${savedIds.length}/${result.itemsCollected} new items`);
 
       return {
         success: true,
         itemsCollected: result.itemsCollected,
-        savedItems: savedCount,
+        savedItems: savedIds.length,
+        savedIds,
         message: 'Data collection job completed successfully',
       };
     },
