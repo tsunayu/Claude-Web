@@ -4,25 +4,31 @@ import helmet from '@fastify/helmet';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import { config } from './config';
+import { errorHandler } from './middlewares/errorHandler';
 import { authRoutes } from './routes/auth';
-import { userRoutes } from './routes/user';
-import { sourceRoutes } from './routes/source';
-import { filterRoutes } from './routes/filter';
-import { notificationRoutes } from './routes/notification';
-import { contentRoutes } from './routes/content';
+import { sourceRoutes } from './routes/sources';
+import { ruleRoutes } from './routes/rules';
+import { jobRoutes } from './routes/jobs';
+import { startCollectWorker } from './services/job.service';
 
 const fastify = Fastify({
   logger: {
     level: config.logLevel,
-    transport: {
-      target: 'pino-pretty',
-      options: {
-        translateTime: 'HH:MM:ss Z',
-        ignore: 'pid,hostname',
-      },
-    },
+    transport:
+      config.nodeEnv === 'development'
+        ? {
+            target: 'pino-pretty',
+            options: {
+              translateTime: 'HH:MM:ss Z',
+              ignore: 'pid,hostname',
+            },
+          }
+        : undefined,
   },
 });
+
+// Register error handler
+fastify.setErrorHandler(errorHandler);
 
 // Register plugins
 async function registerPlugins() {
@@ -56,22 +62,57 @@ async function registerPlugins() {
   await fastify.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
+    errorResponseBuilder: () => ({
+      success: false,
+      error: 'Too Many Requests',
+      message: 'Rate limit exceeded. Please try again later.',
+    }),
   });
 }
 
 // Register routes
 async function registerRoutes() {
+  // API v1 routes
   await fastify.register(authRoutes, { prefix: '/api/v1/auth' });
-  await fastify.register(userRoutes, { prefix: '/api/v1/users' });
   await fastify.register(sourceRoutes, { prefix: '/api/v1/sources' });
-  await fastify.register(filterRoutes, { prefix: '/api/v1/filters' });
-  await fastify.register(notificationRoutes, { prefix: '/api/v1/notifications' });
-  await fastify.register(contentRoutes, { prefix: '/api/v1/contents' });
+  await fastify.register(ruleRoutes, { prefix: '/api/v1/rules' });
+  await fastify.register(jobRoutes, { prefix: '/api/v1/jobs' });
 }
 
 // Health check endpoint
 fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
+  return {
+    success: true,
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    environment: config.nodeEnv,
+  };
+});
+
+// API info endpoint
+fastify.get('/api/v1', async () => {
+  return {
+    success: true,
+    name: 'Intelligent Alert Hub API',
+    version: '1.0.0',
+    description: 'RESTful API for intelligent information collection and notification system',
+    endpoints: {
+      auth: '/api/v1/auth',
+      sources: '/api/v1/sources',
+      rules: '/api/v1/rules',
+      jobs: '/api/v1/jobs',
+      health: '/health',
+    },
+  };
+});
+
+// 404 handler
+fastify.setNotFoundHandler((request, reply) => {
+  reply.status(404).send({
+    success: false,
+    error: 'Not Found',
+    message: `Route ${request.method}:${request.url} not found`,
+  });
 });
 
 // Start server
@@ -86,6 +127,13 @@ async function start() {
     });
 
     fastify.log.info(`Server listening on ${config.host}:${config.port}`);
+    fastify.log.info(`Environment: ${config.nodeEnv}`);
+
+    // Start background job worker
+    if (config.nodeEnv !== 'test') {
+      startCollectWorker();
+      fastify.log.info('Background job worker started');
+    }
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);
@@ -103,3 +151,6 @@ signals.forEach((signal) => {
 });
 
 start();
+
+// Export for testing
+export { fastify };

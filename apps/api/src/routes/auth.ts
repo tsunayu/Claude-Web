@@ -1,39 +1,97 @@
 import { FastifyPluginAsync } from 'fastify';
+import { authService } from '../services/auth.service';
+import { validate } from '../middlewares/validate';
+import { authenticate, AuthenticatedRequest } from '../middlewares/auth';
+import { registerSchema, loginSchema } from '../schemas/validation';
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
   // POST /api/v1/auth/register
-  fastify.post('/register', async (request, reply) => {
-    // TODO: Implement user registration
-    return { message: 'Registration endpoint - To be implemented' };
-  });
+  fastify.post(
+    '/register',
+    {
+      preHandler: [validate(registerSchema, 'body')],
+    },
+    async (request, reply) => {
+      const user = await authService.register(request.body as any);
+
+      // Generate JWT token
+      const token = fastify.jwt.sign({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        subscriptionTier: user.subscriptionTier,
+      });
+
+      return reply.status(201).send({
+        success: true,
+        message: 'User registered successfully',
+        data: {
+          user,
+          token,
+        },
+      });
+    }
+  );
 
   // POST /api/v1/auth/login
-  fastify.post('/login', async (request, reply) => {
-    // TODO: Implement user login
-    return { message: 'Login endpoint - To be implemented' };
-  });
+  fastify.post(
+    '/login',
+    {
+      preHandler: [validate(loginSchema, 'body')],
+    },
+    async (request, reply) => {
+      const user = await authService.login(request.body as any);
+
+      // Generate JWT token
+      const token = fastify.jwt.sign({
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        subscriptionTier: user.subscriptionTier,
+      });
+
+      return reply.send({
+        success: true,
+        message: 'Login successful',
+        data: {
+          user,
+          token,
+        },
+      });
+    }
+  );
 
   // POST /api/v1/auth/logout
-  fastify.post('/logout', async (request, reply) => {
-    // TODO: Implement user logout
-    return { message: 'Logout endpoint - To be implemented' };
-  });
+  fastify.post(
+    '/logout',
+    {
+      preHandler: [authenticate],
+    },
+    async (request, reply) => {
+      // In a stateless JWT setup, logout is typically handled client-side
+      // by removing the token. For added security, you could implement
+      // a token blacklist here.
 
-  // POST /api/v1/auth/refresh
-  fastify.post('/refresh', async (request, reply) => {
-    // TODO: Implement token refresh
-    return { message: 'Token refresh endpoint - To be implemented' };
-  });
+      return reply.send({
+        success: true,
+        message: 'Logout successful',
+      });
+    }
+  );
 
-  // POST /api/v1/auth/forgot-password
-  fastify.post('/forgot-password', async (request, reply) => {
-    // TODO: Implement forgot password
-    return { message: 'Forgot password endpoint - To be implemented' };
-  });
+  // GET /api/v1/auth/me
+  fastify.get(
+    '/me',
+    {
+      preHandler: [authenticate],
+    },
+    async (request: AuthenticatedRequest, reply) => {
+      const user = await authService.getUserById(request.user!.id);
 
-  // POST /api/v1/auth/reset-password
-  fastify.post('/reset-password', async (request, reply) => {
-    // TODO: Implement reset password
-    return { message: 'Reset password endpoint - To be implemented' };
-  });
+      return reply.send({
+        success: true,
+        data: user,
+      });
+    }
+  );
 };
