@@ -50,3 +50,6 @@ prisma/migrations/
 .vercel
 *.tsbuildinfo
 next-env.d.ts
+
+# Preview files
+preview/
