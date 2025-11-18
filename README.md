@@ -335,25 +335,198 @@ lsof -ti:3000 | xargs kill -9
 lsof -ti:3001 | xargs kill -9
 ```
 
+## 🧪 Testing
+
+### Unit Tests
+
+```bash
+# Backend unit tests
+cd apps/api
+npm test
+
+# With coverage
+npm run test:coverage
+
+# Watch mode
+npm run test:watch
+```
+
+### Integration Tests
+
+```bash
+# Backend integration tests
+cd apps/api
+npm run test:integration
+```
+
+### Test Coverage
+
+Tests are automatically run in CI/CD pipeline. Coverage reports are uploaded to Codecov.
+
+## 🚢 Deployment
+
+### Docker Production Build
+
+```bash
+# Build production images
+docker-compose -f docker-compose.prod.yml build
+
+# Start production services
+docker-compose -f docker-compose.prod.yml up -d
+```
+
+### Production Dockerfile
+
+- Multi-stage builds for optimized image size
+- Non-root user for security
+- Health checks included
+- Proper signal handling with dumb-init
+
+### CI/CD Pipeline
+
+GitHub Actions workflow automatically:
+- ✅ Runs tests on push/PR
+- ✅ Builds Docker images
+- ✅ Pushes to Docker Hub
+- ✅ Reports test coverage
+
+### Environment Setup
+
+1. **Set environment variables**
+```bash
+# Copy and edit production environment file
+cp apps/api/.env.example apps/api/.env.production
+cp apps/web/.env.example apps/web/.env.production
+```
+
+2. **Required Production Variables**
+```bash
+# Database
+DATABASE_URL=postgresql://user:pass@host:5432/db
+
+# JWT
+JWT_SECRET=strong-random-secret
+JWT_REFRESH_SECRET=another-strong-secret
+
+# Email
+SENDGRID_API_KEY=your-sendgrid-key
+EMAIL_FROM=noreply@yourdomain.com
+
+# Web Push
+VAPID_PUBLIC_KEY=your-vapid-public-key
+VAPID_PRIVATE_KEY=your-vapid-private-key
+```
+
+3. **Deploy to Cloud Platforms**
+
+#### Vercel (Frontend)
+```bash
+cd apps/web
+vercel --prod
+```
+
+#### Railway (Full Stack)
+```bash
+# Connect your GitHub repository to Railway
+# Set environment variables in Railway dashboard
+# Deploy automatically on push to main
+```
+
+#### AWS / DigitalOcean / etc.
+- Use `docker-compose.prod.yml`
+- Configure reverse proxy (Nginx)
+- Set up SSL certificates
+- Configure monitoring
+
+## 📊 Monitoring & Logging
+
+### Application Logs
+
+```bash
+# View logs with Docker Compose
+docker-compose logs -f api
+docker-compose logs -f web
+
+# Production logs
+docker-compose -f docker-compose.prod.yml logs -f
+```
+
+### Health Checks
+
+- Backend: `GET /health`
+- Frontend: `GET /`
+- Database: Automated in Docker Compose
+
+### Metrics
+
+- Request rate limiting: 100 req/15min
+- Job queue monitoring via BullMQ
+- Notification success/failure tracking
+
+## 🔒 Security Best Practices
+
+- ✅ Password hashing with bcrypt
+- ✅ JWT token authentication
+- ✅ CORS configuration
+- ✅ Helmet security headers
+- ✅ Rate limiting
+- ✅ Input validation (Zod)
+- ✅ SQL injection prevention (Prisma)
+- ✅ XSS protection
+- ✅ CSRF protection
+- ✅ Secure Docker images (non-root user)
+
 ## 📖 Additional Documentation
 
 - [System Design Document](./DESIGN_DOCUMENT.md) - Comprehensive system architecture and design
 - [API Design](./DESIGN_DOCUMENT.md#5-api設計) - Detailed API specifications
-- [Database Schema](./DESIGN_DOCUMENT.md#4-データベース設計) - Complete database design
+- [Database Schema](./apps/api/prisma/README.md) - Complete database design
+- [Database Setup Guide](./DATABASE_SETUP.md) - Database migration guide
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please read the contributing guidelines before submitting pull requests.
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Commit Convention
+
+Follow [Conventional Commits](https://www.conventionalcommits.org/):
+- `feat:` New features
+- `fix:` Bug fixes
+- `docs:` Documentation changes
+- `style:` Code style changes
+- `refactor:` Code refactoring
+- `test:` Test updates
+- `chore:` Build/tooling changes
 
 ## 📝 License
 
-This project is licensed under the MIT License.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
+- [Fastify](https://fastify.dev/) - Fast web framework
+- [Next.js](https://nextjs.org/) - React framework
+- [Prisma](https://www.prisma.io/) - Next-generation ORM
+- [shadcn/ui](https://ui.shadcn.com/) - Beautiful UI components
+- [Tailwind CSS](https://tailwindcss.com/) - Utility-first CSS
 - Design inspired by modern notification systems
 - Built with modern web technologies and best practices
+
+## 📮 Support
+
+If you have any questions or issues, please:
+- 📧 Open an issue on GitHub
+- 💬 Join our discussions
+- 📖 Check the documentation
 
 ---
 
 **Happy Coding!** 🎉
+
+Made with ❤️ by Claude & You
