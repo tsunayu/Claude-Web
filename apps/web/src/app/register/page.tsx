@@ -52,16 +52,21 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       await registerUser(data.email, data.username, data.password);
-      toast({
-        title: '登録成功',
-        description: 'ダッシュボードへリダイレクトしています...',
-      });
+      // Success - will be redirected to dashboard
     } catch (error: any) {
-      toast({
-        title: '登録失敗',
-        description: error.response?.data?.message || '登録に失敗しました。もう一度お試しください。',
-        variant: 'destructive',
-      });
+      console.error('Registration error:', error);
+
+      let errorMessage = '登録に失敗しました。もう一度お試しください。';
+
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage = 'サーバーへの接続がタイムアウトしました。バックエンドAPIが起動しているか確認してください。';
+      } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+        errorMessage = 'サーバーに接続できません。バックエンドAPIが起動しているか確認してください（http://localhost:3001）';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      alert(`登録失敗\n\n${errorMessage}`);
     } finally {
       setLoading(false);
     }

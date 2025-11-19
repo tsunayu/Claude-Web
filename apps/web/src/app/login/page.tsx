@@ -36,16 +36,21 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(data.email, data.password);
-      toast({
-        title: 'ログイン成功',
-        description: 'ダッシュボードへリダイレクトしています...',
-      });
+      // Success - will be redirected to dashboard
     } catch (error: any) {
-      toast({
-        title: 'ログイン失敗',
-        description: error.response?.data?.message || 'メールアドレスまたはパスワードが正しくありません',
-        variant: 'destructive',
-      });
+      console.error('Login error:', error);
+
+      let errorMessage = 'メールアドレスまたはパスワードが正しくありません';
+
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        errorMessage = 'サーバーへの接続がタイムアウトしました。バックエンドAPIが起動しているか確認してください。';
+      } else if (error.code === 'ERR_NETWORK' || error.message?.includes('Network Error')) {
+        errorMessage = 'サーバーに接続できません。バックエンドAPIが起動しているか確認してください（http://localhost:3001）';
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+
+      alert(`ログイン失敗\n\n${errorMessage}`);
     } finally {
       setLoading(false);
     }
